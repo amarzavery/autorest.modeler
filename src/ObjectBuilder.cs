@@ -56,11 +56,9 @@ namespace AutoRest.Modeler
             type.XmlProperties = (SwaggerObject as Schema)?.Xml;
             type.Format = SwaggerObject.Format;
             var xMsEnum = SwaggerObject.Extensions.GetValue<JToken>(Core.Model.XmsExtensions.Enum.Name);
-            if (SwaggerObject.Enum != null && !SwaggerObject.IsConstant)
+            if ((SwaggerObject.Enum != null || xMsEnum != null) && type.KnownPrimaryType == KnownPrimaryType.String && !(IsSwaggerObjectConstant(SwaggerObject)))
             {
                 var enumType = New<EnumType>();
-                // Set the underlying type. This helps to determine whether the values in EnumValue are of type string, number, etc.
-                enumType.UnderlyingType = type;
                 if (SwaggerObject.Enum != null)
                 {
                     SwaggerObject.Enum.ForEach(v => enumType.Values.Add(new EnumValue { Name = v, SerializedName = v }));
@@ -70,15 +68,11 @@ namespace AutoRest.Modeler
                     var enumObject = xMsEnum as JContainer;
                     if (enumObject != null)
                     {
-                        // set the enum name
-                        enumType.SetName(enumObject["name"].ToString());
-                        
-                        // process modelAsString
+                        enumType.SetName(enumObject["name"].ToString() );
                         if (enumObject["modelAsString"] != null)
                         {
                             enumType.ModelAsString = bool.Parse(enumObject["modelAsString"].ToString());
                         }
-
                         var valueOverrides = enumObject["values"] as JArray;
                         if (valueOverrides != null)
                         {
@@ -130,18 +124,7 @@ namespace AutoRest.Modeler
                 else
                 {
                     enumType.ModelAsString = true;
-                    if (SwaggerObject is SwaggerParameter)
-                    {
-                        enumType.SetName((SwaggerObject as SwaggerParameter).Name.ToPascalCase());
-                    }
-                    else
-                    {
-                        // For a model property serviceTypeName is ModelName_PropertyName.
-                        // Hence we set the value after underscore as the name of the enum. 
-                        enumType.SetName(serviceTypeName.Substring(serviceTypeName.IndexOf("_") + 1).ToPascalCase());
-                    }
-                    
-                    Modeler.CodeModel.Add(enumType);
+                    enumType.SetName( string.Empty);
                 }
                 enumType.XmlProperties = (SwaggerObject as Schema)?.Xml;
                 return enumType;
@@ -210,7 +193,7 @@ namespace AutoRest.Modeler
             parameter.IsRequired = swaggerObject.IsRequired;
             parameter.DefaultValue = swaggerObject.Default;
 
-            if (swaggerObject.IsConstant)
+            if (IsSwaggerObjectConstant(swaggerObject))
             {
                 parameter.DefaultValue = swaggerObject.Enum[0];
                 parameter.IsConstant = true;
@@ -223,6 +206,11 @@ namespace AutoRest.Modeler
             parameter.Extensions.AddRange(swaggerObject.Extensions);
 
             SetConstraints(parameter.Constraints, swaggerObject);
+        }
+
+        private static bool IsSwaggerObjectConstant(SwaggerObject swaggerObject)
+        {
+            return (swaggerObject.Enum != null && swaggerObject.Enum.Count == 1 && swaggerObject.IsRequired);
         }
 
         public static void SetConstraints(Dictionary<Constraint, string> constraints, SwaggerObject swaggerObject)
